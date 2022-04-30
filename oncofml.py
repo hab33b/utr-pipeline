@@ -12,9 +12,9 @@ def pool_samples():
     :return: combined maf file
     """
     maf_files = glob.glob('*.maf')  # finds all maf files in directory
+    print(maf_files)
     dfs = [pd.read_csv(file, sep="\t") for file in maf_files]
     dfs = pd.concat(dfs, axis=0)
-    print(maf_files)
     print("num of duplicates: ", dfs.duplicated().sum(), dfs[dfs.duplicated()])
     return dfs.drop_duplicates()
 
@@ -47,11 +47,11 @@ def oncofile(variants):
     mut.columns = ["CHROMOSOME", "POSITION", "REF", "ALT", "SAMPLE"]
 
     # utr3 & utr5
-    utr3 = mut[variants["Variant_Classification"] == "3'Flank"]
-    utr5 = mut[variants["Variant_Classification"] == "5'Flank"]
+    utr3 = mut[variants["Variant_Classification"] == "3'UTR"]
+    utr5 = mut[variants["Variant_Classification"] == "5'UTR"]
 
-    utr3.to_csv("u3", sep="\t", index=False)
-    utr5.to_csv("u5", sep="\t", index=False)
+    utr3.to_csv("u3_all", sep="\t", index=False)
+    utr5.to_csv("u5_all", sep="\t", index=False)
 
 
 def main():
