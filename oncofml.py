@@ -2,7 +2,6 @@
 import pandas as pd
 from pyliftover import LiftOver
 import glob
-import os
 
 
 def pool_samples():
@@ -14,7 +13,10 @@ def pool_samples():
     """
     maf_files = glob.glob('*.maf')  # finds all maf files in directory
     dfs = [pd.read_csv(file, sep="\t") for file in maf_files]
-    return pd.concat(dfs, axis=0)
+    dfs = pd.concat(dfs, axis=0)
+    print(maf_files)
+    print("num of duplicates: ", dfs.duplicated().sum(), dfs[dfs.duplicated()])
+    return dfs.drop_duplicates()
 
 
 def liftover(variants):
@@ -48,14 +50,15 @@ def oncofile(variants):
     utr3 = mut[variants["Variant_Classification"] == "3'Flank"]
     utr5 = mut[variants["Variant_Classification"] == "5'Flank"]
 
-    utr3.to_csv("utr3_all", sep="\t", index=False)
-    utr5.to_csv("utr5_all", sep="\t", index=False)
+    utr3.to_csv("u3", sep="\t", index=False)
+    utr5.to_csv("u5", sep="\t", index=False)
 
 
 def main():
     variants = pool_samples()
     variants = liftover(variants)
     oncofile(variants)
+    return variants
 
 
 if __name__ == "__main__":
