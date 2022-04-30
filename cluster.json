@@ -1,0 +1,17 @@
+{
+    "__default__" :
+    {
+        "account" : "habeeb",
+        "time" : "00:30:00",
+        "ncpus" : 1,
+        "mem" : "8G",
+        "partition" : "normal",
+        "out" :
+    },
+    "mosD" :
+    {
+        "time" : "01:00:00",
+        "ncpus" : 1,
+        "mem" : "16G"
+    }
+}
