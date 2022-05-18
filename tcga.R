@@ -38,7 +38,7 @@ de_analysis <- function(data) {
   ddsSE <- DESeq(ddsSE)
   
   # output DESeq object
-  saveRDS(ddsSE, paste("../data/rds/DESeq-", toupper(study), ".rds", sep=""))
+  saveRDS(ddsSE, paste("../data/rds/DESeq_", toupper(study), ".rds", sep=""))
 }
 
 load_libraries()
@@ -46,4 +46,3 @@ study <- str_squish(readline("Enter the TCGA code (cesc, hnsc, lusc, skcm): "))
 
 rawdata = download_raw_counts(study)      # 1 Download Counts & Filter Data
 de_analysis(rawdata)                      # 2 Analyze Data
-

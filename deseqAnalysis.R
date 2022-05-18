@@ -146,13 +146,13 @@ question <- function(dea, genes, study) {
 }
 
 load_libraries()
-study <- str_squish(readline("Enter the TCGA code (cesc, hnsc, lusc, skcm): "))
-ddsSE <- readRDS(paste("../data/rds/DESeq-", toupper(study), ".rds", sep=""))
+study <- str_squish(readline("Enter the TCGA code (cscc, cesc, hnsc, lusc, skcm): "))
+ddsSE <- readRDS(paste("../data/rds/DESeq_", toupper(study), ".rds", sep=""))
 
-dea = edit_dea(ddsSE)                               # 1   Analyze & Edit Data
-dea = label_genes(dea, genes)                       # 2   Label 3'UTR and 5'UTR
-plotting(dea)                                       # 3   Plotting
-# data_to_excel(dea, study)                         # 4   Output Data
-# question(dea, genes, study)                       # 5   Specific Questions From Data
+dea = edit_dea(ddsSE)             # 1   Analyze & Edit Data
+dea = label_genes(dea, genes)     # 2   Label 3'UTR and 5'UTR
+plotting(dea)                     # 3   Plotting
+# data_to_excel(dea, study)       # 4   Output Data
+# question(dea, genes, study)     # 5   Specific Questions From Data
 
 # TCGA - sample_type
