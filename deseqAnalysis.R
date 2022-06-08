@@ -1,23 +1,19 @@
-load_libraries <- function(){
-  # if (!require("BiocManager", quietly = TRUE))
-  #   install.packages("BiocManager")
-  # BiocManager::install("org.Hs.eg.db")
-  # BiocManager::install("AnnotationDbi")
-  # BiocManager::install("biomaRt")
-  library(org.Hs.eg.db) # hg19?
-  library(AnnotationDbi) # mapId
-  library(biomaRt)
-  
-  # install.packages("tidyverse")
-  # install.packages("gridExtra")
-  # install.packages("ggpubr")
-  # install.packages("ggrepel")
-  library(tidyverse) # ggplot2, dplyr (left_join())
-  library(gridExtra) # grid.arrange()
-  library(ggpubr) # ggmaplot()
-  library(ggrepel)
-  options(ggrepel.max.overlaps = Inf)
-}
+# deseqAnalysis.R 
+# ******************************
+# inputs: TCGA ddsSE object, onco-result files
+# output: graphs for each study (mut, 3'UTR, and 5'UTR)
+# takes in TCGA ddsSE read for a specific study and plots significant genes
+# from the onco-result file to create a volcano plot representation of TCGA ddsSE
+
+library(org.Hs.eg.db) # hg19?
+library(AnnotationDbi) # mapId
+library(biomaRt)
+library(tidyverse) # ggplot2, dplyr left_join() str_squish()
+library(gridExtra) # grid.arrange()
+library(ggpubr) # ggmaplot()
+library(ggrepel)
+library(DESeq2)
+options(ggrepel.max.overlaps = Inf)
 
 # 1 Edit Data
 edit_dea <- function(ddsSE) {
@@ -53,7 +49,7 @@ edit_dea <- function(ddsSE) {
 }
 
 # 2 Label 3'UTR and 5'UTR
-label_genes <- function(dea, genes) {
+label_genes <- function(dea, study) {
   # find top 10 most expressed genes ----
   # Q: how do you define most expressed? order by padj then pick greatest log2foldchange
   dea$genelabels <- ""
@@ -66,10 +62,10 @@ label_genes <- function(dea, genes) {
   # }
   
   # find genes of interest from oncodriveFML file ----
-  files <- c("mut", "u3", "u5")
+  files <- c("3'UTR", "5'UTR") # should i look at mut again?
   for (file in files) {
-    df <- read.csv(paste("../data/onco/", file, sep=""), sep="\t")
-    genes <- drop_na(df)$GENE_ID[drop_na(df)$Q_VALUE < 0.25]
+    df <- read.csv(paste("../data/onco-results/", toupper(study), "-", file, "-onco", sep=""), sep="\t")
+    genes <- df$GENE_ID[df$P_VALUE < 0.25] # drop_na(df)$GENE_ID[drop_na(df)$Q_VALUE < 0.25]
     dea[file] <- ""
     for (gene in genes) {
       if(gene %in% sub("[.][0-9]*","", dea$geneID)){
@@ -105,18 +101,18 @@ plotting <- function(dea) {
           legend.background = element_rect(fill="gray97")
     )
     
-  p_mut <- p + geom_point(data=dea[dea["mut"] != "",],shape=8, alpha=1, size=1.5, col="black", aes(col="black")) +
-    geom_label_repel(data=dea[dea["mut"] != "" & dea$diffexpressed != "NS",], col="black", aes(label=mut), show.legend = FALSE) +
-    labs(subtitle = "TOP 10 GENES + CODING MUTATIONS")
-  p_u3 <- p + geom_point(data=dea[dea["u3"] != "",], shape=8, alpha=1, size=1.5, col="black") +
-    geom_label_repel(data=dea[dea["u3"] != "" & dea$diffexpressed != "NS",], col="black", aes(label=u3), show.legend = FALSE) +
+  # p_mut <- p + geom_point(data=dea[dea["mut"] != "",],shape=8, alpha=1, size=1.5, col="black", aes(col="black")) +
+  #   geom_label_repel(data=dea[dea["mut"] != "" & dea$diffexpressed != "NS",], col="black", aes(label=mut), show.legend = FALSE) +
+  #   labs(subtitle = "TOP 10 GENES + CODING MUTATIONS")
+  p_u3 <- p + geom_point(data=dea[dea["3'UTR"] != "",], shape=8, alpha=1, size=1.5, col="black") +
+    geom_label_repel(data=dea[dea["3'UTR"] != "" & dea$diffexpressed != "NS",], col="black", aes(label=`3'UTR`), show.legend = FALSE) +
     labs(subtitle = "TOP 10 GENES + UTR3 GENES")
-  p_u5 <- p + geom_point(data=dea[dea["u5"] != "",], shape=8, alpha=1, size=1.5, col="black") +
-    geom_label_repel(data=dea[dea["u5"] != "" & dea$diffexpressed != "NS",], col="black", aes(label=u5), show.legend = FALSE) +
+  p_u5 <- p + geom_point(data=dea[dea["5'UTR"] != "",], shape=8, alpha=1, size=1.5, col="black") +
+    geom_label_repel(data=dea[dea["5'UTR"] != "" & dea$diffexpressed != "NS",], col="black", aes(label=`5'UTR`), show.legend = FALSE) +
     labs(subtitle = "TOP 10 GENES + UTR5 GENES")
 
   # plot all ----
-  grid.arrange(p_mut, p_u3, p_u5, layout_matrix=cbind(1,2,3), top = paste("TCGA-",toupper(study),sep=""))
+  grid.arrange(p_u3, p_u5, layout_matrix=cbind(1,2), top = paste("TCGA-",toupper(study),sep=""))
   
   # ma plot ----
   # plotMA(dea, cex=.3, main="Plot MA")
@@ -130,29 +126,11 @@ plotting <- function(dea) {
   
 }
 
-# Output Data
-data_to_excel <- function(dea, study) {
-  file <- paste("../excel/tcga_", tolower(study),".csv", sep="")
-  write.csv(dea, file)
-}
-
-# Specific Questions From Data
-question <- function(dea, genes, study) {
-  # what is the fold change for mab21L4 and ret
-  print(paste("For ", study, ":", sep=""))
-  for (gene in genes) {
-    print(paste(gene, "has a log2foldchange of", signif(dea$log2FoldChange[which(dea == toupper(gene),  arr.ind = TRUE)[1]], 3)))
-  }
-}
-
-load_libraries()
 study <- str_squish(readline("Enter the TCGA code (cscc, cesc, hnsc, lusc, skcm): "))
 ddsSE <- readRDS(paste("../data/rds/DESeq_", toupper(study), ".rds", sep=""))
 
 dea = edit_dea(ddsSE)             # 1   Analyze & Edit Data
-dea = label_genes(dea, genes)     # 2   Label 3'UTR and 5'UTR
+dea = label_genes(dea, study)     # 2   Label 3'UTR and 5'UTR
 plotting(dea)                     # 3   Plotting
-# data_to_excel(dea, study)       # 4   Output Data
-# question(dea, genes, study)     # 5   Specific Questions From Data
 
 # TCGA - sample_type
