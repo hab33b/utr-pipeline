@@ -9,18 +9,14 @@ library(tidyverse) # ggplot2
 
 # 1 Download Raw Counts & Filter Data
 download_raw_counts <- function(study) {
-  
-  query2 <- GDCquery(
+  query <- GDCquery(
     project = paste("TCGA-", toupper(study), sep=""),
     data.category = "Transcriptome Profiling",
     data.type = "Gene Expression Quantification",
     workflow.type = "STAR - Counts", #HTSeq - Counts
-    # sample.type = c("Primary Tumor","Solid Tissue Normal")
   )
   GDCdownload(query, directory = "../data/GDCdata")
   data <- GDCprepare(query, directory = "../data/GDCdata")
-  GDCdownload(query2)
-  data2 <- GDCprepare(query2)
   
   # filter samples - keep normal/tumor samples
   data <- data[, data$shortLetterCode %in% c("NT", "TP")]

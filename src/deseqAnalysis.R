@@ -37,7 +37,6 @@ edit_dea <- function(ddsSE) {
   # ----
   
   # remove duplicates
-  # Q: duplicate what???
   dea <- dea %>% distinct()
   
   # add expression/regulation
@@ -62,10 +61,13 @@ label_genes <- function(dea, study) {
   # }
   
   # find genes of interest from oncodriveFML file ----
-  files <- c("3'UTR", "5'UTR") # should i look at mut again?
+  files <- c("3'UTR", "5'UTR", "Coding") # should i look at mut again?
   for (file in files) {
-    df <- read.csv(paste("../data/onco-results/", toupper(study), "-", file, "-onco", sep=""), sep="\t")
-    genes <- df$GENE_ID[df$P_VALUE < 0.25] # drop_na(df)$GENE_ID[drop_na(df)$Q_VALUE < 0.25]
+    df <- read_tsv(paste("../data/onco-results/", toupper(study), "-", file, "-onco.tsv", sep=""))
+    if (all(is.na(df$Q_VALUE))) {
+      df$Q_VALUE <- p.adjust(df$P_VALUE, method="fdr")
+    }
+    genes <- df$GENE_ID
     dea[file] <- ""
     for (gene in genes) {
       if(gene %in% sub("[.][0-9]*","", dea$geneID)){
@@ -78,13 +80,13 @@ label_genes <- function(dea, study) {
 
 # 3 Plotting
 plotting <- function(dea) {
-  mycolors <- c("gray70", "coral2", "dodgerblue2")
+  mycolors <- c("gray70", "coral2",  "dodgerblue2")
   names(mycolors) <- unique(dea$diffexpressed)
   
   p <- ggplot(dea, aes(x = log2FoldChange, y = -log10(padj))) + 
     # base hgnc data
     geom_point(data=dea, aes(col = diffexpressed), alpha=0.5, size=0.6) +
-    geom_label_repel(data=dea, aes(col = diffexpressed, label = genelabels), show.legend = FALSE, alpha=0.5) +
+    geom_label_repel(data=dea, aes(col = diffexpressed, label = genelabels), show.legend = FALSE, alpha=0.2) +
     geom_vline(xintercept=c(-1, 1), lty="dashed", col="gray30") + 
     geom_hline(yintercept=-log10(0.05), lty="dashed", col="gray30") +
     # theme
@@ -101,9 +103,9 @@ plotting <- function(dea) {
           legend.background = element_rect(fill="gray97")
     )
     
-  # p_mut <- p + geom_point(data=dea[dea["mut"] != "",],shape=8, alpha=1, size=1.5, col="black", aes(col="black")) +
-  #   geom_label_repel(data=dea[dea["mut"] != "" & dea$diffexpressed != "NS",], col="black", aes(label=mut), show.legend = FALSE) +
-  #   labs(subtitle = "TOP 10 GENES + CODING MUTATIONS")
+  p_mut <- p + geom_point(data=dea[dea["Coding"] != "",],shape=8, alpha=1, size=1.5, col="black", aes(col="black")) +
+    geom_label_repel(data=dea[dea["Coding"] != "" & dea$diffexpressed != "NS",], col="black", aes(label=Coding), show.legend = FALSE) +
+    labs(subtitle = "TOP 10 GENES + CODING MUTATIONS")
   p_u3 <- p + geom_point(data=dea[dea["3'UTR"] != "",], shape=8, alpha=1, size=1.5, col="black") +
     geom_label_repel(data=dea[dea["3'UTR"] != "" & dea$diffexpressed != "NS",], col="black", aes(label=`3'UTR`), show.legend = FALSE) +
     labs(subtitle = "TOP 10 GENES + UTR3 GENES")
@@ -112,7 +114,7 @@ plotting <- function(dea) {
     labs(subtitle = "TOP 10 GENES + UTR5 GENES")
 
   # plot all ----
-  grid.arrange(p_u3, p_u5, layout_matrix=cbind(1,2), top = paste("TCGA-",toupper(study),sep=""))
+  grid.arrange( p_mut, p_u3, p_u5, layout_matrix=cbind(1,2,3), top = paste("TCGA-",toupper(study),sep=""))
   
   # ma plot ----
   # plotMA(dea, cex=.3, main="Plot MA")

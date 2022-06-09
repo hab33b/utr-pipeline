@@ -2,25 +2,20 @@
 # ***************************
 # input: deseq object & maf file
 # 
-
-BiocManager::install(c("mixtools","bcellViper","viper"))
 library(DESeq2)
 library(viper)
 library(tidyverse) # ggplot2, dplyr left_join() str_squish()
-library(viper)
 library(mixtools)
-library(bcellViper)
 library(aracne.networks)
 library(biomaRt)
 
-# test if it's worth doing recurrent mutations
-df <- read_tsv("../data/onco/HNSC-3'UTR")
-df2 <- df %>% dplyr::count(CHROMOSOME, POSITION, REF, ALT) %>%
+# # test possibility of considering recurrent mutations
+df <- read_tsv("../data/mafs/TCGA-HNSC-5'UTR.maf")
+CESC <- df %>% dplyr::count(Chromosome, Start_Position, Tumor_Seq_Allele1, Tumor_Seq_Allele2) %>%
   arrange(desc(n))
-hist(df2$n)
+hist(CESC$n)
 
-studies <- c("cesc", "hnsc", "lusc")
-study <- "cesc"
+study <- "hnsc"
 
 # get VST normalized data from DESeq2
 ddsSE <- readRDS(paste("../data/rds/DESeq_", toupper(study), ".rds", sep=""))
@@ -31,13 +26,15 @@ ntIdx <- which(colData(vsd)$shortLetterCode == "NT")
 tpIdx <- which(colData(vsd)$shortLetterCode == "TP")
 # sccIdx <- which(vsd$condition == "SCC")
 # nsIdx <- which(vsd$condition == "NS")
-
 normalMat <- assay(vsd)[, ntIdx] # matrix of transformed values
 tumorMat <- assay(vsd)[, tpIdx]
 
+# update rows and columns of count matrices
 ensgene <- as.character(sub("[.][0-9]*","",rownames(vsd)))
 rownames(normalMat) <- ensgene
 rownames(tumorMat) <- ensgene
+colnames(normalMat) <- as.character(substr(colnames(normalMat), 1, 15))
+colnames(tumorMat) <- as.character(substr(colnames(tumorMat), 1, 15))
 
 # VIPER
 # ****************
@@ -53,7 +50,7 @@ if (network %in% data(package="aracne.networks")$results[, "Item"]) {
   
   # match ensemble to entrezID
   entrezIDs <- unique(c(a$Regulator, a$Target))
-  ensembl <- useMart("ensembl", dataset="hsapiens_gene_ensembl")  
+  ensembl <- useMart("ENSEMBL_MART_ENSEMBL", dataset="hsapiens_gene_ensembl")  
   genes <- getBM(filters="entrezgene_id", attributes=c("ensembl_gene_id","entrezgene_id"), values=entrezIDs, mart=ensembl)
   genes <- as_tibble(genes)
   
@@ -64,56 +61,37 @@ if (network %in% data(package="aracne.networks")$results[, "Item"]) {
   rownames(normalMat) <- keepGenes$entrezgene_id # convert names
   rownames(tumorMat) <- keepGenes$entrezgene_id
   
-  # update adjfile to fit 3col format
-  b <- a %>%
-    dplyr::select(-likelihood) %>%
-    write.table(adjfile, quote=F, sep="\t", row.names=F, col.names=F)
-  
-  # create regulon
-  regul <- aracne2regulon(adjfile, eset=cbind(normalMat, tumorMat), format="3col")
 } else {
   print("Loading from files")
-  
   # upload regulon
   regulon <- readRDS(paste("../data/rds/VIPER_regulon_", toupper(study), ".rds", sep=""))
 }
 
 # viper network
 vpsig <- viperSignature(tumorMat, normalMat, cores = 2)
-vpres <- viper(vpsig, regulon, verbose = TRUE)
-
-maf <- read_tsv("../data/mafs/TCGA-CESC.maf")
+vpres <- viper(vpsig, get(network), verbose = TRUE)
 
 # for each gene in each sample label as mutant or wt
+maf <- read_tsv(paste("../data/mafs/TCGA-", (toupper(study)),".maf", sep=""))
 x <- maf %>%
+  mutate(Tumor_Sample_Barcode = as.character(substr(Tumor_Sample_Barcode, 1, 15))) %>%
   mutate(Tumor_Sample_Barcode = factor(Tumor_Sample_Barcode),
          Hugo_Symbol = factor(Hugo_Symbol)) %>%
   filter(Variant_Classification %in% c("3'UTR", "5'UTR")) %>%
-  # group_by(Tumor_Sample_Barcode) %>%
   dplyr::count(Tumor_Sample_Barcode, Hugo_Symbol, .drop = F) %>%
   mutate(is_mutated = ifelse(n > 0, "Mutated", "WT"))
 
 hgncs <- unique(c(x$Hugo_Symbol))
 ensembl <- useMart(biomart="ENSEMBL_MART_ENSEMBL", dataset="hsapiens_gene_ensembl")
-genes <- getBM(filters="hgnc_symbol", attributes=c("hgnc_symbol","entrezgene_id"), values=hgncs, mart=ensembl)
-genes2 <- getBM(filters="hgnc_symbol", attributes=c("hgnc_symbol","ensembl_gene_id"), values=hgncs, mart=ensembl)
+genes2 <- getBM(filters="hgnc_symbol", attributes=c("hgnc_symbol","entrezgene_id"), values=hgncs, mart=ensembl)
 
-vpres <- tibble::rownames_to_column(as.data.frame(vpres))
-
-# subset and rename ensemble genes in count matrices
-keepGenes <- genes2[genes2$entrezgene_id %in% vpres$rowname, ]
-vpres <- vpres[keepGenes$ensembl_gene_id, ]
-rownames(vpres) <- keepGenes$entrezgene_id
-
-# if vpres is ensemble genes
-keepGenes2 <- genes2[genes2$ensembl_gene_id %in% rownames(vpres), ]
-vpres <- vpres[keepGenes2$ensembl_gene_id, ]
+keepGenes <- genes2[genes2$entrezgene_id %in% rownames(vpres), ]
 
 # create table of significant genes
 genes2$p_value <- ""
 for (r in rownames(vpres)) {
-  hgnc <- genes2 %>% filter(ensembl_gene_id == r) %>% pull(hgnc_symbol)
-  if (hgnc %in% genes2$hgnc_symbol){
+  hgnc <- genes2 %>% filter(entrezgene_id == r) %>% pull(hgnc_symbol)
+  if (length(hgnc %in% genes2$hgnc_symbol) != 0){
     row <- vpres[rownames(vpres)==r,]
     mut_samples <- x %>%
       filter(Hugo_Symbol == hgnc, is_mutated == "Mutated") %>%
@@ -121,9 +99,15 @@ for (r in rownames(vpres)) {
     wt_samples <- x %>%
       filter(Hugo_Symbol == hgnc, is_mutated == "WT") %>%
       pull(Tumor_Sample_Barcode)
-    z = t.test(row[as.character(mut_samples)], row[as.character(wt_samples)])
-    genes2$p_value[genes2$ensembl_gene_id == r] <- z$p.value
+    if (length(mut_samples) > 2 & length(wt_samples) > 0) {
+      z = t.test(row[as.character(mut_samples)], row[as.character(wt_samples)])
+      genes2$p_value[genes2$entrezgene_id == r] <- z$p.value
+    }
   }
 }
+genes2$p_adj <- ""
+genes2$p_adj <- p.adjust(genes2$p_value, method="fdr")
+
+
 
 
